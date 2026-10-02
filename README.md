@@ -24,3 +24,9 @@ Cada equipo tiene un plantel con nombre, número, altura, tono de piel, peinado,
 `mocap.js` tiene cuatro remates reales con carrera previa, tomados de la base de captura de movimiento de Carnegie Mellon (clips 10_02, 10_05, 10_06 y 11_01, conversión BVH de B. Hahne) y reducidos a posiciones de articulaciones. El arquero y la barrera se animan por código.
 
 The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217.
+
+## APK de Android
+
+`dist/DocePasos.apk` es la app para Android 5.0 o superior: abre el juego a pantalla completa en un WebView, con todo incluido (three.js, tipografías, modelo y captura de movimiento), así que funciona sin internet. Para instalarla hay que permitir la instalación de apps de origen desconocido.
+
+Se arma con `android/build.py`, sin Gradle ni el SDK de Android: usa el `aapt2` y la plataforma que vienen dentro de apktool, smali para el código de la actividad (`android/smali`) y `jarsigner` del JDK. Las instrucciones están al principio del script. La firma es de prueba (`android/debug.jks`, contraseña `docepasos`); para publicar en Play Store haría falta una clave propia y un `targetSdkVersion` más nuevo.

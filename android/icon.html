@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0000">
+<canvas id="c" width="512" height="512"></canvas>
+<script>
+// Ícono de Doce Pasos: arco con red, pelota y franja ámbar del marcador
+const c = document.getElementById('c'), g = c.getContext('2d'), S = 512;
+const bg = g.createLinearGradient(0, 0, 0, S); bg.addColorStop(0, '#13283f'); bg.addColorStop(1, '#08111c');
+g.fillStyle = bg; g.beginPath(); g.roundRect(0, 0, S, S, 96); g.fill();
+const turf = g.createLinearGradient(0, 300, 0, S); turf.addColorStop(0, '#2a7137'); turf.addColorStop(1, '#1d5428');
+g.fillStyle = turf; g.beginPath(); g.roundRect(0, 300, S, 212, [0, 0, 96, 96]); g.fill();
+g.strokeStyle = 'rgba(238,242,240,.35)'; g.lineWidth = 3;
+for (let x = 96; x <= 416; x += 26) { g.beginPath(); g.moveTo(x, 130); g.lineTo(x, 300); g.stroke(); }
+for (let y = 130; y <= 300; y += 26) { g.beginPath(); g.moveTo(96, y); g.lineTo(416, y); g.stroke(); }
+g.strokeStyle = '#f4f6f2'; g.lineWidth = 18; g.lineJoin = 'miter';
+g.beginPath(); g.moveTo(96, 304); g.lineTo(96, 122); g.lineTo(416, 122); g.lineTo(416, 304); g.stroke();
+g.fillStyle = '#ffb627'; g.fillRect(0, 300, S, 14);
+const R = 74, bx = 256, by = 376;
+g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.ellipse(bx + 8, by + R - 6, R * 0.9, 16, 0, 0, Math.PI * 2); g.fill();
+const ball = g.createRadialGradient(bx - 26, by - 30, 10, bx, by, R); ball.addColorStop(0, '#fff'); ball.addColorStop(1, '#c9cec8');
+g.fillStyle = ball; g.beginPath(); g.arc(bx, by, R, 0, Math.PI * 2); g.fill();
+g.save(); g.beginPath(); g.arc(bx, by, R, 0, Math.PI * 2); g.clip();
+const pent = (x, y, r) => { g.beginPath(); for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * Math.PI * 2 / 5; g[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * r, y + Math.sin(a) * r); } g.closePath(); g.fill(); };
+g.fillStyle = '#14213d'; pent(bx, by, 26);
+for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * Math.PI * 2 / 5; pent(bx + Math.cos(a) * 72, by + Math.sin(a) * 72, 22); }
+g.restore();
+</script>
