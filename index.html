@@ -78,7 +78,6 @@ kbd{font:700 12px/1 var(--body);border:1px solid rgba(255,255,255,.32);border-bo
 .banner[data-tone="info"] .banner-big{color:var(--amber);font-size:clamp(38px,7.5vw,84px)}
 .banner-small{font-size:15px;font-weight:600;padding:4px 12px;border-radius:999px;background:rgba(8,17,28,.78)}
 .banner-small:empty{display:none}
-.stage[data-cam="keep"] .banner{top:22%}
 .banner.show{animation:bannerIn .42s cubic-bezier(.2,1.5,.4,1) both}
 @keyframes bannerIn{from{transform:scale(.55);opacity:0}to{transform:none;opacity:1}}
 
@@ -215,6 +214,8 @@ kbd{font:700 12px/1 var(--body);border:1px solid rgba(255,255,255,.32);border-bo
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 <script>
 (() => {
 'use strict';
@@ -240,13 +241,13 @@ const DIFF_NAMES = { facil: 'Fácil', normal: 'Normal', dificil: 'Difícil' };
 
 const TEAMS = {
   you: {
-    kit: { shirt: '#86c8ee', stripe: '#f3f7fa', trim: '#f3f7fa', shorts: '#14213d', socks: '#f3f7fa', number: '#14213d' },
-    gk: { shirt: '#c9ee4f', panel: '#a3c934', trim: '#25300f', shorts: '#25300f', socks: '#25300f', legs: '#25300f', number: '#25300f', gloves: '#f4f4ef' },
+    kit: { shirt: '#86c8ee', stripe: '#f3f7fa', sleeve: '#f3f7fa', trim: '#14213d', shorts: '#14213d', socks: '#f3f7fa', number: '#14213d', boots: '#17191e' },
+    gk: { shirt: '#c9ee4f', panel: '#a3c934', trim: '#25300f', shorts: '#25300f', socks: '#25300f', legs: '#25300f', number: '#25300f', gloves: '#f4f4ef', boots: '#17191e' },
     numbers: [10, 9, 7, 11, 8, 19, 5, 22, 4, 2, 3],
   },
   cpu: {
-    kit: { shirt: '#d23a3f', stripe: null, trim: '#8e1f25', shorts: '#f1efe9', socks: '#d23a3f', number: '#f8f3ea' },
-    gk: { shirt: '#8a5cf0', panel: '#6c45c4', trim: '#1d1433', shorts: '#1d1433', socks: '#1d1433', legs: '#1d1433', number: '#f4f0ff', gloves: '#ffd34d' },
+    kit: { shirt: '#d23a3f', stripe: null, trim: '#f1efe9', shorts: '#f1efe9', socks: '#d23a3f', number: '#f8f3ea', boots: '#e9e9e4' },
+    gk: { shirt: '#8a5cf0', panel: '#6c45c4', trim: '#1d1433', shorts: '#1d1433', socks: '#1d1433', legs: '#1d1433', number: '#f4f0ff', gloves: '#ffd34d', boots: '#17191e' },
     numbers: [9, 10, 7, 14, 6, 11, 8, 18, 3, 4, 2],
   },
 };
@@ -265,6 +266,7 @@ const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const sc3 = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
 const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const len3 = (a) => Math.hypot(a[0], a[1], a[2]);
+const norm3 = (a) => sc3(a, 1 / (len3(a) || 1));
 const lerp3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
 /* ---------- Preferences (this browser only) ---------- */
@@ -664,7 +666,8 @@ class Figure {
     scene.add(this.group);
   }
 
-  setKit(kit, number, skin) {
+  setKit(kit, number, skinIdx) {
+    const skin = SKIN[skinIdx % SKIN.length];
     this.kit = kit;
     this.number = number;
     const M = this.mat;
@@ -689,6 +692,27 @@ class Figure {
     g.textBaseline = 'middle';
     g.fillStyle = k.number;
     g.fillText(String(this.number), w / 2, h * 0.47);
+  }
+
+  // Builds this simple body's joints from the shared animation targets
+  drive(t) {
+    const up = norm3(sub3(t.chest, t.pelvis)), side = norm3(sub3(t.hipL, t.hipR)), back = sc3(t.fwd, -1);
+    const j = {
+      pelvis: t.pelvis, chest: t.chest,
+      neck: add3(t.chest, sc3(up, 0.09)), head: add3(t.chest, sc3(up, 0.22)),
+      waist: add3(t.pelvis, sc3(up, 0.06)), seat: add3(t.pelvis, sc3(up, -0.2)),
+      shL: add3(add3(t.chest, sc3(side, 0.2)), sc3(up, -0.04)),
+      shR: add3(add3(t.chest, sc3(side, -0.2)), sc3(up, -0.04)),
+      hipL: t.hipL, hipR: t.hipR, ftL: t.footL, ftR: t.footR,
+    };
+    for (const k of ['L', 'R']) {
+      const sg = k === 'L' ? 1 : -1;
+      const an = add3(add3(t['foot' + k], [0, 0.05, 0]), sc3(t.fwd, -0.05));
+      [j['kn' + k], j['an' + k]] = ik(j['hip' + k], an, 0.46, 0.44, add3(t.fwd, sc3(side, sg * 0.1)));
+      const pole = t.elbowPole || add3(add3(back, sc3(side, sg * 0.4)), [0, -0.2, 0]);
+      [j['el' + k], j['ha' + k]] = ik(j['sh' + k], t['hand' + k], 0.3, 0.28, pole);
+    }
+    this.pose(j);
   }
 
   pose(j) {
@@ -730,6 +754,254 @@ function ik(a, c, l1, l2, pole) {
 const keeperFig = new Figure(true);
 const kickerFig = new Figure(false);
 keeperFig.group.position.copy(V(0, 0, Z_KEEP));
+keeperFig.hipY = 0.95;
+kickerFig.hipY = 0.95;
+
+/* ---------- Realistic players: a Ready Player Me avatar re-dressed in each kit ---------- */
+// The outfit meshes keep their folds (normal maps) but get new colours in the shader, chosen from where each
+// vertex sits on the body in its rest pose: shirt with stripes and a number, shorts, socks, boots, gloves.
+const KIT_DECL = `
+uniform float uPart, uMeanL, uStripes, uStripeW, uCutY, uCollarY, uKneeY, uGloves;
+uniform vec3 uKitA, uKitB, uSleeve, uTrim, uNumColor, uShorts, uSocks, uBoots, uGlove, uHair;
+uniform vec4 uNumBack, uNumFront;
+uniform sampler2D uNum;
+varying vec3 vBindPos;
+varying vec3 vBindNrm;
+varying vec2 vKitW;
+`;
+const KIT_FRAG = `
+{
+  float L = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+  float shade = mix(1.0, clamp(L / uMeanL, 0.72, 1.22), 0.45);
+  vec3 K = diffuseColor.rgb;
+  bool paint = true;
+  if (uPart < 0.5) {
+    if (vBindPos.y < uCutY) discard;
+    bool sleeve = vKitW.x > 0.5;
+    float stripe = step(0.5, fract((vBindPos.x + 4.0) / uStripeW)) * uStripes;
+    K = sleeve ? uSleeve : mix(uKitA, uKitB, stripe);
+    if (!sleeve && vBindPos.y > uCollarY) K = uTrim;
+    if (sleeve && vKitW.y > 0.2) K = uTrim;
+    if (!sleeve) {
+      vec4 r = vBindNrm.z < -0.1 ? uNumBack : uNumFront;
+      vec2 q = (vBindPos.xy - r.xy) / r.zw;
+      if (abs(vBindNrm.z) > 0.1 && q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0) {
+        float a = texture2D(uNum, vec2(vBindNrm.z < 0.0 ? 1.0 - q.x : q.x, q.y)).a;
+        K = mix(K, uNumColor, a);
+      }
+    }
+  } else if (uPart < 1.5) {
+    K = vBindPos.y > uKneeY ? uShorts : uSocks;
+    if (abs(vBindPos.y - uKneeY + 0.03) < 0.012) K = mix(K, uTrim, 0.85);
+  } else if (uPart < 2.5) {
+    K = uBoots;
+  } else if (uPart < 3.5) {
+    paint = uGloves > 0.5 && vKitW.y > 0.5;
+    K = uGlove;
+  } else {
+    // Short hair on the scalp: hairline high on the forehead, low at the nape, clear of the ears
+    float hairline = 1.63 + clamp((vBindPos.z + 0.08) / 0.2, 0.0, 1.0) * 0.145;
+    bool ear = abs(vBindPos.x) > 0.072 && vBindPos.y < 1.715 && vBindPos.z > -0.05;
+    paint = vBindPos.y > hairline && !ear;
+    float grain = fract(sin(dot(floor(vBindPos * 900.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    K = uHair * (0.8 + 0.4 * grain);
+    shade = 1.0;
+  }
+  if (paint) diffuseColor.rgb = K * shade;
+}
+`;
+const AV_TINT = ['#ffffff', '#c99f84', '#f4e2d4', '#94694e'];
+const AV_HAIR = ['#1a120c', '#0d0a08', '#6b4a2b', '#2a1a10', '#141010'];
+const DRIVEN = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot'];
+
+function meanLuminance(tex) {
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 48;
+    const g = c.getContext('2d'); g.drawImage(tex.image, 0, 0, 48, 48);
+    const d = g.getImageData(0, 0, 48, 48).data, lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) sum += 0.2126 * lin(d[i]) + 0.7152 * lin(d[i + 1]) + 0.0722 * lin(d[i + 2]);
+    return Math.max(0.02, sum / (d.length / 4));
+  } catch (e) { return 0.25; }
+}
+
+// Per-vertex weight of arm and hand bones, so sleeves and gloves follow the skeleton
+function addKitWeights(mesh) {
+  const g = mesh.geometry;
+  if (g.attributes.kitW) return;
+  const si = g.attributes.skinIndex, sw = g.attributes.skinWeight, names = mesh.skeleton.bones.map((b) => b.name);
+  const arm = names.map((n) => /^(Left|Right)(Arm|ForeArm|Hand)/.test(n)), hand = names.map((n) => /Hand/.test(n));
+  const out = new Float32Array(si.count * 2);
+  const ix = ['getX', 'getY', 'getZ', 'getW'];
+  for (let i = 0; i < si.count; i++) {
+    let a = 0, h = 0;
+    for (const f of ix) { const b = si[f](i), w = sw[f](i); if (arm[b]) a += w; if (hand[b]) h += w; }
+    out[i * 2] = a; out[i * 2 + 1] = h;
+  }
+  g.setAttribute('kitW', new THREE.BufferAttribute(out, 2));
+}
+
+function kitMaterial(base, part, U) {
+  const m = base.clone();
+  const own = { uPart: { value: part }, uMeanL: { value: base.map ? meanLuminance(base.map) : 0.25 } };
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, U, own);
+    sh.vertexShader = 'attribute vec2 kitW;\nvarying vec3 vBindPos;\nvarying vec3 vBindNrm;\nvarying vec2 vKitW;\n' +
+      sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvBindPos = position;\nvBindNrm = normal;\nvKitW = kitW;');
+    sh.fragmentShader = KIT_DECL + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n' + KIT_FRAG);
+  };
+  m.customProgramCacheKey = () => 'kit-' + part;
+  return m;
+}
+
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _m4 = new THREE.Matrix4();
+const arr3 = (v) => [v.x, v.y, v.z], vec3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
+
+class Avatar {
+  constructor(template, facesBack) {
+    this.group = new THREE.Group();
+    this.model = THREE.SkeletonUtils.clone(template);
+    if (facesBack) this.model.rotation.y = Math.PI;
+    this.group.add(this.model);
+    this.bones = {};
+    this.meshes = {};
+    this.model.traverse((o) => {
+      if (o.isBone) this.bones[o.name] = o;
+      if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; this.meshes[o.name] = o; }
+    });
+    const col3 = () => ({ value: new THREE.Color() });
+    this.numCanvas = document.createElement('canvas');
+    this.numCanvas.width = this.numCanvas.height = 256;
+    this.numTex = new THREE.CanvasTexture(this.numCanvas);
+    this.U = {
+      uKitA: col3(), uKitB: col3(), uSleeve: col3(), uTrim: col3(), uNumColor: col3(), uShorts: col3(), uSocks: col3(), uBoots: col3(), uGlove: col3(), uHair: col3(),
+      uStripes: { value: 0 }, uStripeW: { value: 0.15 }, uCutY: { value: 0.93 }, uCollarY: { value: 1.585 }, uKneeY: { value: 0.53 }, uGloves: { value: 0 },
+      uNum: { value: this.numTex }, uNumBack: { value: new THREE.Vector4(-0.13, 1.06, 0.26, 0.28) }, uNumFront: { value: new THREE.Vector4(-0.06, 1.3, 0.12, 0.13) },
+    };
+    const parts = { Wolf3D_Outfit_Top: 0, Wolf3D_Outfit_Bottom: 1, Wolf3D_Outfit_Footwear: 2, Wolf3D_Body: 3, Wolf3D_Head: 4 };
+    for (const name in this.meshes) {
+      const mesh = this.meshes[name];
+      mesh.material = name in parts ? kitMaterial(mesh.material, parts[name], this.U) : mesh.material.clone();
+    }
+    this.skinMats = ['Wolf3D_Head', 'Wolf3D_Body'].filter((n) => this.meshes[n]).map((n) => this.meshes[n].material);
+    this.rest = {};
+    for (const n of DRIVEN) this.rest[n] = this.bones[n].quaternion.clone();
+    this.model.updateMatrixWorld(true);
+    const wp = (n) => this.bones[n].getWorldPosition(new THREE.Vector3());
+    this.len = {
+      thigh: wp('LeftUpLeg').distanceTo(wp('LeftLeg')), shin: wp('LeftLeg').distanceTo(wp('LeftFoot')),
+      upper: wp('LeftArm').distanceTo(wp('LeftForeArm')), fore: wp('LeftForeArm').distanceTo(wp('LeftHand')),
+    };
+    this.hipY = wp('Hips').y;
+    this.ankleH = wp('LeftFoot').y;
+    const toe = wp('LeftToeBase').sub(wp('LeftFoot'));
+    this.toePitch = Math.atan2(-toe.y, Math.hypot(toe.x, toe.z));
+    this.relHips = this.model.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(this.bones.Hips.getWorldQuaternion(new THREE.Quaternion()));
+    scene.add(this.group);
+  }
+
+  setKit(kit, number, skinIdx) {
+    const U = this.U, c = (k, hex) => U[k].value.copy(col(hex));
+    c('uKitA', kit.shirt); c('uKitB', kit.stripe || kit.shirt); c('uSleeve', kit.sleeve || kit.shirt); c('uTrim', kit.trim);
+    c('uNumColor', kit.number); c('uShorts', kit.shorts); c('uSocks', kit.socks); c('uBoots', kit.boots || '#15171b'); c('uGlove', kit.gloves || '#ffffff');
+    U.uStripes.value = kit.stripe ? 1 : 0;
+    U.uGloves.value = kit.gloves ? 1 : 0;
+    U.uKneeY.value = kit.shorts === kit.socks ? -1 : 0.53;
+    for (const m of this.skinMats) m.color.copy(col(AV_TINT[skinIdx % AV_TINT.length]));
+    c('uHair', AV_HAIR[(skinIdx + number) % AV_HAIR.length]);
+    if (this.meshes.Wolf3D_Beard) this.meshes.Wolf3D_Beard.visible = skinIdx % 2 === 0;
+    this.number = number;
+    this.paintNumber();
+  }
+
+  paintNumber() {
+    const g = this.numCanvas.getContext('2d');
+    g.clearRect(0, 0, 256, 256);
+    g.font = `800 236px ${DISPLAY}`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillStyle = '#fff';
+    g.fillText(String(this.number || ''), 128, 138, 240);
+    this.numTex.needsUpdate = true;
+  }
+
+  // Rotate `bone` so the direction to `child` points along `dir` (world space)
+  aim(bone, child, dir) {
+    const p = bone.getWorldPosition(_v1);
+    const c = child.getWorldPosition(_v2).sub(p);
+    if (c.lengthSq() < 1e-10 || dir.lengthSq() < 1e-10) return;
+    _q1.setFromUnitVectors(c.normalize(), _v3.copy(dir).normalize());
+    bone.getWorldQuaternion(_q2).premultiply(_q1);
+    bone.parent.getWorldQuaternion(_q3).invert().multiply(_q2);
+    bone.quaternion.copy(_q3);
+    bone.updateMatrixWorld(true);
+  }
+
+  drive(t) {
+    const B = this.bones;
+    for (const n of DRIVEN) B[n].quaternion.copy(this.rest[n]);
+    this.group.updateMatrixWorld(true);
+    const W = (a) => this.group.localToWorld(vec3(a));
+    const pelvis = W(t.pelvis), chest = W(t.chest), head = W(t.head);
+    const up = chest.clone().sub(pelvis).normalize();
+    const left = W(t.hipL).sub(W(t.hipR));
+    left.addScaledVector(up, -left.dot(up)).normalize();
+    const fwd = new THREE.Vector3().crossVectors(left, up);
+    _m4.makeBasis(left, up, fwd);
+    _q1.setFromRotationMatrix(_m4).multiply(this.relHips);
+    B.Hips.parent.getWorldQuaternion(_q2).invert();
+    B.Hips.quaternion.copy(_q2.multiply(_q1));
+    B.Hips.position.copy(B.Hips.parent.worldToLocal(pelvis.clone()));
+    B.Hips.updateMatrixWorld(true);
+    for (const [a, b] of [['Spine', 'Spine1'], ['Spine1', 'Spine2'], ['Spine2', 'Neck']]) this.aim(B[a], B[b], up);
+    const look = head.clone().sub(chest);
+    this.aim(B.Neck, B.Head, look);
+    const fwdW = vec3(t.fwd).transformDirection(this.group.matrixWorld);
+    const down = new THREE.Vector3(0, -1, 0);
+    for (const side of ['Left', 'Right']) {
+      const k = side[0], sg = side === 'Left' ? 1 : -1;
+      // arm
+      const sh = B[side + 'Arm'].getWorldPosition(new THREE.Vector3());
+      const pole = t.elbowPole ? vec3(t.elbowPole).transformDirection(this.group.matrixWorld)
+        : fwdW.clone().negate().addScaledVector(left, sg * 0.4).addScaledVector(down, 0.2);
+      const [el, ha] = ik(arr3(sh), arr3(W(t['hand' + k])), this.len.upper, this.len.fore, arr3(pole));
+      this.aim(B[side + 'Arm'], B[side + 'ForeArm'], vec3(el).sub(sh));
+      this.aim(B[side + 'ForeArm'], B[side + 'Hand'], vec3(ha).sub(B[side + 'ForeArm'].getWorldPosition(new THREE.Vector3())));
+      // leg
+      const hip = B[side + 'UpLeg'].getWorldPosition(new THREE.Vector3());
+      const ankle = W(add3(t['foot' + k], [0, this.ankleH - 0.05, 0])).addScaledVector(fwdW, -0.03);
+      const [kn, an] = ik(arr3(hip), arr3(ankle), this.len.thigh, this.len.shin, arr3(fwdW.clone().addScaledVector(left, sg * 0.1)));
+      this.aim(B[side + 'UpLeg'], B[side + 'Leg'], vec3(kn).sub(hip));
+      this.aim(B[side + 'Leg'], B[side + 'Foot'], vec3(an).sub(B[side + 'Leg'].getWorldPosition(new THREE.Vector3())));
+      const pitch = this.toePitch + (t['toe' + k] || 0);
+      const toeDir = fwdW.clone().multiplyScalar(Math.cos(pitch)).addScaledVector(down, Math.sin(pitch));
+      this.aim(B[side + 'Foot'], B[side + 'ToeBase'], toeDir);
+    }
+  }
+}
+
+// Bodies on screen. The simple figures are replaced once the avatar file has loaded.
+const players = { keeper: keeperFig, kicker: kickerFig };
+const kits = { keeper: null, kicker: null };
+function applyKits() {
+  if (kits.kicker) players.kicker.setKit(...kits.kicker);
+  if (kits.keeper) players.keeper.setKit(...kits.keeper);
+}
+function loadAvatars() {
+  if (!THREE.GLTFLoader || !THREE.SkeletonUtils) return;
+  new THREE.GLTFLoader().load('jugador.glb', (gltf) => {
+    try {
+      gltf.scene.traverse((o) => { if (o.isSkinnedMesh) addKitWeights(o); });
+      const keeperAv = new Avatar(gltf.scene, false), kickerAv = new Avatar(gltf.scene, true);
+      keeperAv.group.position.copy(V(0, 0, Z_KEEP));
+      keeperFig.group.visible = kickerFig.group.visible = false;
+      players.keeper = keeperAv;
+      players.kicker = kickerAv;
+      applyKits();
+    } catch (e) { /* keep the simple figures */ }
+  }, undefined, () => { /* keep the simple figures */ });
+}
 
 /* ---------- State ---------- */
 const game = { diff: DIFFS[prefs.diff] ? prefs.diff : 'normal', first: 'you', res: { you: [], cpu: [] }, over: false, winner: null };
@@ -809,32 +1081,26 @@ function planDive(k, T, dur, reach, start) {
   k.dive = { start, dur, H0x, H1x, H1y, th, arm };
 }
 
-function keeperJoints() {
+// Animation targets in the figure's own space; each body type solves its joints from these.
+function keeperTargets() {
   const q = keeperPose(keeper);
-  const perp = [-q.dir[1], q.dir[0]];
+  const right = [-q.dir[1], q.dir[0]];   // the keeper faces the spot, so his right hand is on -x
   const ready = keeper.dive ? 1 - clamp((clock - keeper.dive.start) / keeper.dive.dur, 0, 1) : 1;
   const at = (p, dx, dy, z) => [p[0] + dx, p[1] + dy, z];
-  const pelvis = at(q.hip, 0, 0, 0), chest = at(q.sh, 0, 0, 0.03), head = at(q.head, 0, 0, 0.05);
-  const j = {
-    pelvis, chest, head,
-    neck: lerp3(chest, head, 0.45),
-    waist: at(q.hip, q.dir[0] * 0.07, q.dir[1] * 0.07, 0),
-    seat: at(q.hip, -q.dir[0] * 0.17, -q.dir[1] * 0.17, 0),
-    shL: at(q.sh, perp[0] * 0.2, perp[1] * 0.2, 0.02),
-    shR: at(q.sh, -perp[0] * 0.2, -perp[1] * 0.2, 0.02),
-    hipL: at(q.hip, perp[0] * 0.1, perp[1] * 0.1, 0),
-    hipR: at(q.hip, -perp[0] * 0.1, -perp[1] * 0.1, 0),
-    haL: at(q.handA, 0, 0, 0.06 + 0.12 * ready),
-    haR: at(q.handB, 0, 0, 0.06 + 0.12 * ready),
-    ftL: at(q.footA, 0, 0, 0.06),
-    ftR: at(q.footB, 0, 0, 0.06),
+  return {
+    pelvis: at(q.hip, 0, 0, 0),
+    chest: at(q.hip, q.dir[0] * 0.5, q.dir[1] * 0.5, 0.03),
+    head: at(q.hip, q.dir[0] * 0.64, q.dir[1] * 0.64, 0.05),
+    hipL: at(q.hip, -right[0] * 0.1, -right[1] * 0.1, 0),
+    hipR: at(q.hip, right[0] * 0.1, right[1] * 0.1, 0),
+    handL: lerp3(at(q.handB, 0, 0, 0.06), at(q.hip, 0.42, 0.12, 0.34), ready),
+    handR: lerp3(at(q.handA, 0, 0, 0.06), at(q.hip, -0.42, 0.12, 0.34), ready),
+    footL: at(q.footB, 0, 0, 0.06),
+    footR: at(q.footA, 0, 0, 0.06),
+    fwd: [0, 0, 1],
+    elbowPole: [0, -0.5, 1],
+    toeL: 0, toeR: 0,
   };
-  for (const k of ['L', 'R']) {
-    const an = add3(j['ft' + k], [0, 0.05, -0.04]);
-    [j['kn' + k], j['an' + k]] = ik(j['hip' + k], an, 0.5, 0.48, [0, 0, 1]);
-    [j['el' + k], j['ha' + k]] = ik(j['sh' + k], j['ha' + k], 0.34, 0.33, [0, -0.5, 1]);
-  }
-  return j;
 }
 
 /* ---------- Kicker animation (procedural, game-local: x right, y up, z forward) ---------- */
@@ -843,20 +1109,21 @@ const RUN_H = Math.atan2(KB.x - KA.x, KB.z - KA.z), KICK_H = 0.12;
 const RUN_LEN = Math.hypot(KB.x - KA.x, KB.z - KA.z);
 const toLocal = (wx, wz, rx, rz, h) => { const dx = wx - rx, dz = wz - rz; return [dx * Math.cos(h) - dz * Math.sin(h), dx * Math.sin(h) + dz * Math.cos(h)]; };
 const PLANT = (() => { const p = toLocal(-0.27, Z_SPOT - 0.1, KB.x, KB.z, KICK_H); return [p[0], 0.05, p[1]]; })();
-const HIT = (() => { const p = toLocal(0, Z_SPOT - 0.04, KB.x, KB.z, KICK_H); return [p[0], 0.1, p[1]]; })();
+const HIT = (() => { const p = toLocal(0, Z_SPOT - 0.04, KB.x, KB.z, KICK_H); return [p[0], 0.1, p[1] - 0.1]; })();
 const runFoot = (ph, side) => { const psi = ph + (side > 0 ? Math.PI : 0); return [side * 0.11, 0.05 + Math.max(0, Math.sin(psi)) * 0.26, -0.34 * Math.cos(psi)]; };
 const runHand = (ph, side) => { const psi = ph + (side > 0 ? Math.PI : 0); return [side * 0.26, 0.98 + Math.max(0, -Math.cos(psi)) * 0.08, 0.26 * Math.cos(psi)]; };
 
-function kickerJoints() {
+function kickerTargets(hipY) {
   const post = kicker.kickAt != null ? clock - kicker.kickAt : -1;
-  let rx, rz, h, lean, bob = 0, fL, fR, hL, hR;
+  let rx, rz, h, lean, bob = 0, fL, fR, hL, hR, toeL = 0, toeR = 0;
   if (post >= 0) {
     const f1 = smooth(post / 0.22), f2 = smooth((post - 0.4) / 0.45), fwd = 0.32 * easeOut(clamp(post / 0.7, 0, 1));
     h = KICK_H;
     rx = KB.x + Math.sin(h) * fwd; rz = KB.z + Math.cos(h) * fwd;
     fL = [PLANT[0], 0.05, PLANT[2] - fwd];
-    const high = [HIT[0] - 0.05, 0.85, HIT[2] + 0.35];
+    const high = [HIT[0] - 0.05, 0.8, HIT[2] + 0.35];
     fR = lerp3(lerp3(HIT, high, f1), [0.14, 0.05, 0.3], f2);
+    toeR = 0.7 * (1 - f2);
     lean = lerp(-0.1, 0.06, f2);
     hL = lerp3([-0.62, 1.22, 0.18], [-0.27, 0.9, 0.03], f2);
     hR = lerp3([0.42, 1.02, -0.3], [0.27, 0.9, 0.03], f2);
@@ -868,6 +1135,7 @@ function kickerJoints() {
     if (u < 0.75) {
       h = RUN_H; lean = 0.2; bob = Math.abs(Math.sin(ph)) * 0.035;
       fL = runFoot(ph, -1); fR = runFoot(ph, 1); hL = runHand(ph, -1); hR = runHand(ph, 1);
+      toeL = fL[1] > 0.08 ? 0.35 : 0; toeR = fR[1] > 0.08 ? 0.35 : 0;
     } else {
       const w = (u - 0.75) / 0.25, s = smooth(w);
       h = lerp(RUN_H, KICK_H, s);
@@ -875,6 +1143,7 @@ function kickerJoints() {
       fL = lerp3(runFoot(ph, -1), PLANT, smooth(w * 1.6));
       const back = [0.16, 0.5, -0.5];
       fR = w < 0.6 ? lerp3(runFoot(ph, 1), back, smooth(w / 0.6)) : lerp3(back, HIT, smooth((w - 0.6) / 0.4));
+      toeR = 0.7 * s;
       hL = lerp3(runHand(ph, -1), [-0.62, 1.22, 0.18], s);
       hR = lerp3(runHand(ph, 1), [0.42, 1.02, -0.3], s);
     }
@@ -883,24 +1152,16 @@ function kickerJoints() {
     fL = [-0.13, 0.05, 0]; fR = [0.13, 0.05, -0.06]; hL = [-0.27, 0.9, 0.03]; hR = [0.27, 0.9, 0.03];
   }
   const up = [0, Math.cos(lean), Math.sin(lean)];
-  const pelvis = [0, 0.95 + bob, 0];
+  const pelvis = [0, hipY - 0.03 + bob, 0];
   const chest = add3(pelvis, sc3(up, 0.5));
-  const j = {
-    pelvis, chest,
-    neck: add3(chest, sc3(up, 0.09)),
-    head: add3(chest, sc3(up, 0.22)),
-    waist: add3(pelvis, sc3(up, 0.06)),
-    seat: add3(pelvis, [0, -0.2, 0]),
-    shL: add3(chest, [-0.2, -0.04, 0]), shR: add3(chest, [0.2, -0.04, 0]),
+  const t = {
+    pelvis, chest, head: add3(chest, sc3(up, 0.14)),
     hipL: add3(pelvis, [-0.1, -0.07, 0]), hipR: add3(pelvis, [0.1, -0.07, 0]),
-    ftL: fL, ftR: fR,
+    footL: fL, footR: fR, handL: hL, handR: hR, fwd: [0, 0, 1],
   };
-  [j.knL, j.anL] = ik(j.hipL, add3(fL, [0, 0.05, -0.05]), 0.46, 0.44, [-0.1, 0, 1]);
-  [j.knR, j.anR] = ik(j.hipR, add3(fR, [0, 0.05, -0.05]), 0.46, 0.44, [0.1, 0, 1]);
-  [j.elL, j.haL] = ik(j.shL, hL, 0.3, 0.28, [-0.4, -0.2, -1]);
-  [j.elR, j.haR] = ik(j.shR, hR, 0.3, 0.28, [0.4, -0.2, -1]);
-  for (const k in j) j[k] = [j[k][0], j[k][1], -j[k][2]];
-  return { j, rx, rz, h };
+  for (const k in t) t[k] = [t[k][0], t[k][1], -t[k][2]];
+  t.toeL = toeL; t.toeR = toeR;
+  return { t, rx, rz, h };
 }
 
 /* ---------- Shots ---------- */
@@ -1071,8 +1332,9 @@ function resetScene(shooter) {
   kicker.kickAt = null;
   const round = Math.floor(kicksTaken() / 2);
   const T = TEAMS[shooter];
-  kickerFig.setKit(T.kit, T.numbers[round % T.numbers.length], SKIN[(round * 3 + (shooter === 'you' ? 0 : 1)) % SKIN.length]);
-  keeperFig.setKit(TEAMS[keeper.team].gk, 1, SKIN[shooter === 'you' ? 1 : 2]);
+  kits.kicker = [T.kit, T.numbers[round % T.numbers.length], round * 3 + (shooter === 'you' ? 0 : 1)];
+  kits.keeper = [TEAMS[keeper.team].gk, 1, shooter === 'you' ? 1 : 2];
+  applyKits();
   Object.assign(ball, { x: 0, y: BALL_R, z: Z_SPOT, vx: 0, vy: 0, vz: 0, mode: 'rest', inGoal: false, netHit: false });
   ballMesh.visible = true;
   net.t0 = -10;
@@ -1417,7 +1679,6 @@ function update(dt) {
 // Each broadcast camera frames a set of points: the fov and tilt are solved so they all fit on any screen shape.
 const CAMS = {
   shoot: { pos: [0, 3.6, 4.0], dir: 1, low: 0, pts: [[-4.1, 0, 25], [4.1, 0, 25], [-4.1, 3.3, 25], [4.1, 3.3, 25], [0, -0.45, Z_SPOT]], wide: [[KA.x - 0.5, 0, KA.z], [KA.x - 0.5, 1.9, KA.z]] },
-  keep: { pos: [0, 8.5, 40], dir: -1, low: 0.17, pts: [[-4.3, -0.2, 25], [4.3, -0.2, 25], [-4.3, 2.6, 25], [4.3, 2.6, 25], [2.2, 0, 10.5], [-2.2, 0, 10.5], [KA.x - 0.6, 1.9, KA.z - 0.8]], wide: [] },
 };
 function frameCam(c, aspect) {
   let pMin = Infinity, pMax = -Infinity, yMax = 0;
@@ -1452,16 +1713,15 @@ function updateCamera(dt) {
   let t;
   if (st.mode === 'menu' || st.mode === 'over') t = menuCam(aspect);
   else {
-    const keepCam = st.shooter === 'cpu';
-    t = frameCam(CAMS[keepCam ? 'keep' : 'shoot'], aspect);
+    t = frameCam(CAMS.shoot, aspect);
     if (kicker.kickAt != null && (st.mode === 'flight' || st.mode === 'after')) {
       const since = clock - kicker.kickAt;
       _f.subVectors(t.look, t.pos).normalize();
-      t.pos.addScaledVector(_f, (keepCam ? 1.4 : 1.8) * easeOut(clamp(since / 1.6, 0, 1)));
+      t.pos.addScaledVector(_f, 1.8 * easeOut(clamp(since / 1.6, 0, 1)));
       if (ballMesh.visible) t.look.lerp(_ballV.copy(ballMesh.position), 0.12);
     }
   }
-  stage.dataset.cam = st.mode === 'menu' || st.mode === 'over' ? 'menu' : st.shooter === 'cpu' ? 'keep' : 'shoot';
+  stage.dataset.cam = st.mode === 'menu' || st.mode === 'over' ? 'menu' : 'game';
   if (!cam.ready) { cam.pos.copy(t.pos); cam.look.copy(t.look); cam.fov = t.fov; cam.ready = true; }
   const k = 1 - Math.exp(-dt * 3.4);
   cam.pos.lerp(t.pos, k);
@@ -1508,11 +1768,11 @@ function syncScene(dt) {
   }
 
   // Players
-  keeperFig.pose(keeperJoints());
-  const kj = kickerJoints();
-  kickerFig.group.position.copy(V(kj.rx, 0, kj.rz));
-  kickerFig.group.rotation.y = -kj.h;
-  kickerFig.pose(kj.j);
+  players.keeper.drive(keeperTargets());
+  const kt = kickerTargets(players.kicker.hipY);
+  players.kicker.group.position.copy(V(kt.rx, 0, kt.rz));
+  players.kicker.group.rotation.y = -kt.h;
+  players.kicker.drive(kt.t);
 
   // Aim
   const aiming = st.shooter === 'you' && (st.mode === 'aim' || st.mode === 'power');
@@ -1590,10 +1850,9 @@ window.addEventListener('keydown', (e) => {
   } else if (st.mode === 'power' && go) {
     if (!e.repeat && clock - st.pressAt > 0.12) lockPower();
   } else if (st.shooter === 'cpu' && (st.mode === 'runup' || st.mode === 'flight')) {
-    // The keeper camera looks back at the spot, so screen-left is the goal's +x side
     const hi = e.shiftKey;
-    if (k === 'ArrowLeft') playerDive({ x: 2.7, y: hi ? 1.9 : 0.6 });
-    else if (k === 'ArrowRight') playerDive({ x: -2.7, y: hi ? 1.9 : 0.6 });
+    if (k === 'ArrowLeft') playerDive({ x: -2.7, y: hi ? 1.9 : 0.6 });
+    else if (k === 'ArrowRight') playerDive({ x: 2.7, y: hi ? 1.9 : 0.6 });
     else if (k === 'ArrowUp') playerDive({ x: 0, y: 2.1 });
     else if (k === 'ArrowDown') playerDive({ x: 0, y: 0.3 });
     else used = false;
@@ -1640,11 +1899,12 @@ function frame(ts) {
 
 function boot(data) {
   layout();
+  loadAvatars();
   if ('ResizeObserver' in window) new ResizeObserver(layout).observe(stage);
   else window.addEventListener('resize', layout);
   openMenu();
   if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(() => { redraw(boardTex); redraw(kickerFig.tex); redraw(keeperFig.tex); }).catch(() => {});
+    document.fonts.ready.then(() => { redraw(boardTex); applyKits(); }).catch(() => {});
   }
   const saved = data && data.res;
   if (saved && Array.isArray(saved.you) && Array.isArray(saved.cpu) && saved.you.length + saved.cpu.length > 0 && !data.over) {
