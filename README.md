@@ -6,12 +6,12 @@ Juego de fútbol en 3D en el navegador: tanda de penales contra la computadora y
 
 Abrí `index.html` en el navegador, directo desde el disco o desde cualquier servidor estático. Si falta `jugador.js`, el juego usa jugadores simples hechos con cilindros; si falta `mocap.js`, el remate se anima por código.
 
-- **Pateando:** deslizá el dedo (o arrastrá el mouse) desde la pelota hacia el arco. Donde termina el trazo es adonde va la pelota; si el trazo es curvo, la pelota toma efecto para ese lado; cuanto más rápido, más fuerte, pero si te pasás de la franja verde se puede ir arriba. Mientras deslizás ves la trayectoria.
+- **Pateando:** primero apuntás deslizando el dedo (o arrastrando el mouse) desde la pelota hacia el arco: donde termina el trazo es adonde va la pelota. El efecto es opcional: un trazo recto sale sin efecto, y si lo curvás a propósito la pelota toma efecto para ese lado. Después elegís la potencia frenando la barra con un toque: en la franja verde sale precisa; si te pasás, se puede ir arriba. La trayectoria se ve antes de patear.
 - **Atajando (penales):** tocá el arco donde creés que va la pelota. Si te tirás antes del remate, el pateador te puede leer y cambiar de palo.
 - **Penales:** cinco por lado, alternados, y muerte súbita si hay empate.
-- **Tiros libres:** cinco tiros desde distintos lugares, entre 18 y 28 metros, con barrera que salta y arquero que lee la trayectoria. Pasala por arriba de la barrera o rodeala con efecto. El récord queda guardado en el navegador.
+- **Tiros libres:** cinco tiros desde distintos lugares, entre 25 y 34 metros, con barrera que salta y arquero que lee la trayectoria (cuanto más lejos, más tiempo tiene para acomodarse). Pasala por arriba de la barrera o rodeala con efecto. El récord queda guardado en el navegador.
 
-Teclado: flechas para apuntar, `A` y `D` para el efecto, `W` y `S` para la potencia y `Espacio` para patear. Atajando: `←` `→` para tirarte (con `Shift`, arriba), `↑` salto, `↓` bloqueo.
+Teclado: flechas para apuntar, `A` y `D` para el efecto (opcional) y `Espacio` para pasar a la potencia; otro `Espacio` frena la barra y patea. Atajando: `←` `→` para tirarte (con `Shift`, arriba), `↑` salto, `↓` bloqueo.
 
 Tres dificultades: Fácil, Normal y Difícil.
 

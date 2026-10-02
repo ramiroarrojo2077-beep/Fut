@@ -190,7 +190,7 @@ kbd{font:700 12px/1 var(--body);border:1px solid rgba(255,255,255,.32);border-bo
       <div class="howto">
         <div>
           <h3>Pateando</h3>
-          <p>Deslizá desde la pelota hacia el arco: donde termina el trazo es adonde va. Si lo curvás, la pelota toma efecto; cuanto más rápido, más fuerte, pero se puede ir arriba.</p>
+          <p>Deslizá desde la pelota hacia el arco: donde termina el trazo es adonde va. Si querés efecto, curvá el trazo. Después frená la barra de potencia en la franja verde; si te pasás, se puede ir arriba.</p>
         </div>
         <div>
           <h3>Atajando</h3>
@@ -199,7 +199,7 @@ kbd{font:700 12px/1 var(--body);border:1px solid rgba(255,255,255,.32);border-bo
       </div>
       <div class="actions"><button class="primary" id="start-btn" type="button">Empezar</button></div>
       <p class="foot error" id="gl-error" hidden>Este navegador no puede mostrar gráficos 3D (WebGL). Probá con Chrome, Edge, Firefox o Safari actualizados.</p>
-      <p class="foot kb">Teclado: flechas para apuntar, <kbd>A</kbd> <kbd>D</kbd> efecto, <kbd>W</kbd> <kbd>S</kbd> potencia y <kbd>Espacio</kbd> para patear. Atajando: <kbd>←</kbd> <kbd>→</kbd> para tirarte, con <kbd>Shift</kbd> arriba; <kbd>↑</kbd> salto, <kbd>↓</kbd> bloqueo.</p>
+      <p class="foot kb">Teclado: flechas para apuntar, <kbd>A</kbd> <kbd>D</kbd> efecto y <kbd>Espacio</kbd> para la potencia y para patear. Atajando: <kbd>←</kbd> <kbd>→</kbd> para tirarte, con <kbd>Shift</kbd> arriba; <kbd>↑</kbd> salto, <kbd>↓</kbd> bloqueo.</p>
       <p class="foot" id="record" hidden></p>
     </div>
   </div>
@@ -1209,7 +1209,7 @@ const kicker = { team: 'you', u: 0, dur: 1.4, kickAt: null, pl: null, clip: null
 const wall = { on: false, pls: [], pos: [], n: [0, 1], along: [1, 0], center: [0, 0], jumpAt: null, delay: [] };
 const ball = { x: 0, y: BALL_R, z: Z_SPOT, vx: 0, vy: 0, vz: 0, mode: 'rest', inGoal: false, netHit: false };
 const net = { t0: -10, x: 0, y: 1, dirty: false };
-const aim = { stroke: null, live: null, kb: { x: 0, y: 1.2, curve: 0, p: 0.66, used: false } };
+const aim = { stroke: null, live: null, lock: null, kb: { x: 0, y: 1.2, curve: 0, used: false } };
 let clock = 0;
 const D = () => DIFFS[game.diff];
 const view = { W: 1, H: 1 };
@@ -1530,7 +1530,7 @@ function buildShot(x0, z0, X, Y, curve, p, scatter) {
     Y += gauss() * sig * 0.8 + Math.max(0, p - SWEET[1]) * 4;
   }
   Y = Math.max(BALL_R, Y);
-  const T = Math.hypot(X - x0, Z_GOAL - z0) / lerp(12, 30, p);
+  const T = Math.hypot(X - x0, Z_GOAL - z0) / lerp(12, 32, p);
   return { x0, z0, X, Y, T, curve, arc: (GRAVITY * T * T) / 8 * 0.92, p };
 }
 
@@ -1591,9 +1591,12 @@ function planFkKeeper(shot) {
   const dxdu = shot.X - shot.x0 + shot.curve * 4 * (1 - 2 * ur);
   const guessX = b.x + dxdu * (1 - ur);
   st.keeperPlan = 'wait';
-  const T = { x: lerp(guessX, shot.X, d.fkRead) + gauss() * 0.3, y: shot.Y + gauss() * 0.25 };
+  // a long ball gives the keeper time: he reads the curve better and shuffles across before diving
+  const spare = Math.max(0, tCross - react - d.cpuDive);
+  const read = lerp(d.fkRead, 1, clamp(spare / 1.2, 0, 0.7));
+  const T = { x: lerp(guessX, shot.X, read) + gauss() * 0.3, y: shot.Y + gauss() * 0.25 };
   const start = clock + Math.max(react, tCross - d.cpuDive * 0.95);
-  planDive(keeper, T, d.cpuDive, d.cpuReach + 0.15, start);
+  planDive(keeper, T, d.cpuDive, d.cpuReach + 0.15 + clamp(spare * 0.9, 0, 0.8), start);
 }
 
 /* ---------- Sound (synthesised, starts after the first tap) ---------- */
@@ -1671,8 +1674,8 @@ const Sound = {
 
 /* ---------- Flow ---------- */
 const FK_SPOTS = [
-  { x: 0, d: 20 }, { x: -6.5, d: 19 }, { x: 7, d: 21 }, { x: -2.5, d: 24 }, { x: 4, d: 25.5 },
-  { x: -9, d: 21.5 }, { x: 10, d: 18.5 }, { x: 1.5, d: 27 }, { x: -4.5, d: 22.5 }, { x: 5.5, d: 23 },
+  { x: 0, d: 26 }, { x: -7, d: 25 }, { x: 8, d: 27 }, { x: -3, d: 30 }, { x: 4.5, d: 32 },
+  { x: -9.5, d: 28 }, { x: 10.5, d: 25.5 }, { x: 1.5, d: 34 }, { x: -5, d: 29 }, { x: 6, d: 31 },
 ];
 function goals(t) { return game.res[t].filter(Boolean).length; }
 function kicksTaken() { return game.res.you.length + game.res.cpu.length; }
@@ -1722,7 +1725,8 @@ function resetScene(shooter, kickerPl, keeperTeam, withWall) {
   net.t0 = -10;
   aim.stroke = null;
   aim.live = null;
-  aim.kb = { x: 0, y: 1.2, curve: 0, p: 0.66, used: false };
+  aim.lock = null;
+  aim.kb = { x: 0, y: 1.2, curve: 0, used: false };
   preview.hide();
   Object.assign(st, { power: 0, shot: null, crossed: false, wallChecked: false, outcome: null, fooled: false, earlyDive: false, celebrate: false });
 }
@@ -1759,13 +1763,28 @@ function beginTurn() {
   Sound.whistle(0.3);
   if (st.shooter === 'you') {
     setMode('aim');
-    setPrompt('<b>Deslizá desde la pelota hacia el arco</b> · la curva del trazo le da efecto<span class="kb"> · o flechas, <kbd>A</kbd> <kbd>D</kbd>, <kbd>W</kbd> <kbd>S</kbd> y <kbd>Espacio</kbd></span>');
+    setPrompt('<b>Deslizá desde la pelota hacia el arco</b> para apuntar · si curvás el trazo, le das efecto<span class="kb"> · o flechas, <kbd>A</kbd> <kbd>D</kbd> efecto y <kbd>Espacio</kbd></span>');
   } else {
     planCpuShot();
     setMode('runup');
     Sound.tension(0.09);
     setPrompt('Atajás vos: <b>tocá el arco donde va la pelota</b><span class="kb"> · <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></span>');
   }
+}
+
+function lockAim(prm) {
+  aim.lock = { X: prm.X, Y: prm.Y, curve: prm.curve };
+  aim.live = null;
+  st.meterT = 0;
+  st.pressAt = clock;
+  setMode('power');
+  setPrompt('<b>Tocá para elegir la potencia</b> · frená la barra en la franja verde<span class="kb"> · <kbd>Espacio</kbd></span>');
+}
+
+// Power bar: sweeps up and down until the player stops it
+function meterValue() {
+  const ph = (st.meterT / D().meter) % 1;
+  return ph < 0.5 ? ph * 2 : 2 - ph * 2;
 }
 
 function shoot(prm) {
@@ -1984,7 +2003,7 @@ function finishFreeKicks() {
 
 const MODE_LEDE = {
   penales: 'Cinco remates por lado, alternados. Si terminan iguales, se sigue a muerte súbita hasta que uno falle.',
-  libres: 'Cinco tiros libres desde distintos lugares, con barrera y arquero. Pasala por arriba o rodeala con efecto.',
+  libres: 'Cinco tiros libres de 25 a 34 metros, con barrera y arquero. Pasala por arriba o rodeala con efecto.',
 };
 function selectedMode() { const r = document.querySelector('input[name="mode"]:checked'); return r && r.value === 'libres' ? 'libres' : 'penales'; }
 
@@ -2136,13 +2155,16 @@ function updateFree(dt) {
 
 function update(dt) {
   st.modeT += dt;
-  const crouchTo = st.mode === 'runup' || st.mode === 'flight' ? 1 : st.mode === 'aim' || st.mode === 'intro' ? 0.35 : 0;
+  const crouchTo = st.mode === 'runup' || st.mode === 'flight' ? 1 : st.mode === 'aim' || st.mode === 'power' || st.mode === 'intro' ? 0.35 : 0;
   keeper.crouch += (crouchTo - keeper.crouch) * (1 - Math.exp(-dt * 4));
   if (!keeper.dive) keeper.sway = Math.sin(clock * 2.1) * (0.14 - 0.07 * keeper.crouch);
   if (st.bannerUntil && clock > st.bannerUntil) { $('banner').hidden = true; st.bannerUntil = 0; }
   switch (st.mode) {
     case 'intro':
       if (st.modeT > 1.3) beginTurn();
+      break;
+    case 'power':
+      st.meterT += dt;
       break;
     case 'runup':
       kicker.u = clamp(st.modeT / kicker.dur, 0, 1);
@@ -2304,11 +2326,14 @@ function syncScene(dt) {
   }
 
   // Aim preview and power
-  const aiming = st.mode === 'aim' && st.shooter === 'you';
-  const prm = aiming ? (aim.live || (aim.kb.used ? { X: aim.kb.x, Y: aim.kb.y, curve: aim.kb.curve, p: aim.kb.p } : null)) : null;
+  let prm = null;
+  if (st.shooter === 'you' && st.mode === 'aim') {
+    if (aim.live) prm = { ...aim.live, p: 0.66 };
+    else if (aim.kb.used) prm = { X: aim.kb.x, Y: aim.kb.y, curve: aim.kb.curve, p: 0.66 };
+  } else if (st.shooter === 'you' && st.mode === 'power' && aim.lock) prm = { ...aim.lock, p: meterValue() };
   if (prm) preview.show(buildShot(spot.x, spot.z, prm.X, prm.Y, prm.curve, prm.p, false), prm.p); else preview.hide();
   const meter = $('meter');
-  const meterP = prm ? prm.p : st.shooter === 'you' && (st.mode === 'runup' || (st.mode === 'flight' && st.modeT < 0.4)) ? st.power : null;
+  const meterP = st.mode === 'power' && prm ? prm.p : st.shooter === 'you' && (st.mode === 'runup' || (st.mode === 'flight' && st.modeT < 0.4)) ? st.power : null;
   meter.hidden = meterP == null;
   if (meterP != null) {
     const [bx, by] = project(spot.x, 0, spot.z), [, gy] = project(0, 0, Z_GOAL);
@@ -2342,7 +2367,8 @@ function rayGoal(clientX, clientY) {
 const toGoal = (e) => rayGoal(e.clientX, e.clientY);
 const overlayOpen = () => !$('start').hidden || !$('end').hidden;
 
-// A stroke from the ball: its end is the target, its bend is the curve, its final speed is the power
+// A stroke from the ball aims the shot: its end is the target. A roughly straight stroke means no spin;
+// only a clear bend adds curve, towards the side it bends.
 function swipeParams(pts) {
   const a = pts[0], b = pts[pts.length - 1];
   const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy);
@@ -2351,16 +2377,9 @@ function swipeParams(pts) {
   let dev = 0;
   for (const q of pts) { const d = (q.x - a.x) * nx + (q.y - a.y) * ny; if (Math.abs(d) > Math.abs(dev)) dev = d; }
   const target = rayGoal(b.x, b.y);
-  let i = pts.length - 1;
-  while (i > 0 && b.t - pts[i - 1].t < 110) i--;
-  const seg = pts[Math.max(0, i - 1)], dt = Math.max(16, b.t - seg.t);
-  // power from the stroke's average speed, or its finish if that was quicker
-  const vEnd = ((Math.hypot(b.x - seg.x, b.y - seg.y) / dt) * 1000) / view.H;
-  let len = 0;
-  for (let j = 1; j < pts.length; j++) len += Math.hypot(pts[j].x - pts[j - 1].x, pts[j].y - pts[j - 1].y);
-  const vAvg = ((len / Math.max(16, b.t - a.t)) * 1000) / view.H;
-  const v = Math.max(vAvg, vEnd * 0.85);
-  return { X: clamp(target.x, -6, 6), Y: clamp(target.y, BALL_R, 3.6), curve: clamp((dev / L) * 11, -3.4, 3.4), p: clamp((v - 0.45) / 2.6, 0.06, 1) };
+  const bend = dev / L, dead = 0.08;
+  const curve = Math.abs(bend) < dead ? 0 : clamp(Math.sign(bend) * (Math.abs(bend) - dead) * 13, -3.4, 3.4);
+  return { X: clamp(target.x, -6, 6), Y: clamp(target.y, BALL_R, 3.6), curve };
 }
 
 canvas.addEventListener('pointerdown', (e) => {
@@ -2371,6 +2390,7 @@ canvas.addEventListener('pointerdown', (e) => {
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* not supported */ }
     return;
   }
+  if (st.mode === 'power') { if (clock - st.pressAt > 0.15) shoot({ ...aim.lock, p: meterValue() }); return; }
   if (st.shooter === 'cpu' && (st.mode === 'runup' || st.mode === 'flight')) playerDive(toGoal(e));
   else if (st.mode === 'after' && st.modeT > 0.8) endTurn();
 });
@@ -2388,8 +2408,8 @@ const endStroke = (e) => {
   aim.stroke = null;
   if (st.mode !== 'aim' || e.type === 'pointercancel') { aim.live = null; return; }
   const prm = swipeParams(pts);
-  if (prm) shoot(prm);
-  else { const t = toGoal(e); shoot({ X: clamp(t.x, -6, 6), Y: clamp(t.y, BALL_R, 3.6), curve: 0, p: 0.64 }); }
+  if (prm) lockAim(prm);
+  else { const t = toGoal(e); lockAim({ X: clamp(t.x, -6, 6), Y: clamp(t.y, BALL_R, 3.6), curve: 0 }); }
 };
 canvas.addEventListener('pointerup', endStroke);
 canvas.addEventListener('pointercancel', endStroke);
@@ -2407,12 +2427,13 @@ window.addEventListener('keydown', (e) => {
     else if (k === 'ArrowDown') kb.y -= step;
     else if (k === 'a' || k === 'A') kb.curve -= 0.4;
     else if (k === 'd' || k === 'D') kb.curve += 0.4;
-    else if (k === 'w' || k === 'W') kb.p += 0.05;
-    else if (k === 's' || k === 'S') kb.p -= 0.05;
-    else if (go) { if (!e.repeat) { Sound.init(); shoot({ X: kb.x, Y: kb.y, curve: kb.curve, p: kb.p }); } }
+    else if (go) { if (!e.repeat) { Sound.init(); lockAim({ X: kb.x, Y: kb.y, curve: kb.curve }); } }
     else used = false;
-    kb.x = clamp(kb.x, -5, 5); kb.y = clamp(kb.y, BALL_R, 3.4); kb.curve = clamp(kb.curve, -3.2, 3.2); kb.p = clamp(kb.p, 0.06, 1);
-    if (used) kb.used = true;
+    kb.x = clamp(kb.x, -5, 5); kb.y = clamp(kb.y, BALL_R, 3.4); kb.curve = clamp(Math.round(kb.curve * 10) / 10, -3.2, 3.2);
+    if (used && !go) kb.used = true;
+  } else if (st.mode === 'power' && st.shooter === 'you') {
+    if (go) { if (!e.repeat && clock - st.pressAt > 0.15) shoot({ ...aim.lock, p: meterValue() }); }
+    else used = false;
   } else if (st.shooter === 'cpu' && (st.mode === 'runup' || st.mode === 'flight')) {
     const hi = e.shiftKey;
     if (k === 'ArrowLeft') playerDive({ x: -2.7, y: hi ? 1.9 : 0.6 });
