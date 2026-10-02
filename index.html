@@ -988,10 +988,11 @@ function applyKits() {
   if (kits.kicker) players.kicker.setKit(...kits.kicker);
   if (kits.keeper) players.keeper.setKit(...kits.keeper);
 }
-// jugador.glb in the repository; jugador.json (the same model as embedded glTF) where .glb files are not served
-function loadAvatars(urls = ['jugador.glb', 'jugador.json']) {
-  if (!THREE.GLTFLoader || !THREE.SkeletonUtils || !urls.length) return;
-  new THREE.GLTFLoader().load(urls[0], (gltf) => {
+// The model ships as a script (jugador.js, the GLB in base64): scripts load from disk and in sandboxed pages,
+// where downloading the file with fetch or XHR is not allowed.
+function loadAvatars() {
+  if (!THREE.GLTFLoader || !THREE.SkeletonUtils) return;
+  const onModel = (gltf) => {
     try {
       gltf.scene.traverse((o) => { if (o.isSkinnedMesh) addKitWeights(o); });
       const keeperAv = new Avatar(gltf.scene, false), kickerAv = new Avatar(gltf.scene, true);
@@ -1001,7 +1002,30 @@ function loadAvatars(urls = ['jugador.glb', 'jugador.json']) {
       players.kicker = kickerAv;
       applyKits();
     } catch (e) { /* keep the simple figures */ }
-  }, undefined, () => loadAvatars(urls.slice(1)));
+  };
+  const parse = () => {
+    const b64 = window.JUGADOR_GLB;
+    if (!b64) return;
+    let buffer;
+    try {
+      const bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      buffer = bytes.buffer;
+    } catch (e) { return; }
+    // Decode the textures with <img> from blob: URLs; the default ImageBitmap path uses fetch, which may be blocked
+    const bitmap = window.createImageBitmap;
+    try {
+      window.createImageBitmap = undefined;
+      new THREE.GLTFLoader().parse(buffer, '', onModel, () => { /* keep the simple figures */ });
+    } catch (e) { /* keep the simple figures */ } finally {
+      window.createImageBitmap = bitmap;
+    }
+  };
+  if (window.JUGADOR_GLB) { parse(); return; }
+  const tag = document.createElement('script');
+  tag.src = 'jugador.js';
+  tag.onload = parse;
+  document.head.appendChild(tag);
 }
 
 /* ---------- State ---------- */
